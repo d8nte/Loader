@@ -1,20 +1,22 @@
 -- =============================================
--- INDO VOICE HUB - OFFICIAL LOADER (WITH UNIVERSAL FALLBACK)
+-- INDO VOICE HUB - FIXED LOADER WITH DEBUG
 -- =============================================
 
 local HUB_NAME      = "Indo Voice"
-local VERSION       = "1.2"
-local UNIVERSAL_URL = "https://raw.githubusercontent.com/d8nte/all_games/refs/heads/main/Universal.lua"
+local VERSION       = "1.3"
 
--- Daftar Game Spesifik (Bisa diisi GameId atau PlaceId)
+-- Gunakan format URL ringkas & stabil (tanpa refs/heads/)
+local UNIVERSAL_URL = "https://raw.githubusercontent.com/d8nte/all_games/main/Universal.lua"
+
 local games = {
     -- [ID_GAME] = "URL_RAW_GITHUB",
-    [3198546127]  = "https://raw.githubusercontent.com/d8nte/all_games/refs/heads/main/IndoVoice.lua",
+    [3198546127]  = "https://raw.githubusercontent.com/d8nte/all_games/main/IndoVoice.lua",
+    [9691752199]  = "https://raw.githubusercontent.com/d8nte/all_games/main/Sawah_Indo.lua",
+    [7326934954]  = "https://raw.githubusercontent.com/d8nte/all_games/main/99_nitf.lua",
 }
 
 local StarterGui = game:GetService("StarterGui")
 
--- Fungsi Notifikasi In-Game
 local function notify(title, text, duration)
     pcall(function()
         StarterGui:SetCore("SendNotification", {
@@ -25,51 +27,60 @@ local function notify(title, text, duration)
     end)
 end
 
--- Deteksi ID Game Player
+-- Ambil ID Game
 local universeId = game.GameId
 local placeId    = game.PlaceId
 
--- 1. Cari Script Khusus Game
+print("--------------------------------------------------")
+print(string.format("[%s Loader Debug] PlaceId: %d | UniverseId: %d", HUB_NAME, placeId, universeId))
+
+-- Pengecekan Target URL
 local targetRawURL = games[universeId] or games[placeId]
 local isUniversal  = false
 
--- 2. Filtering Fallback: Jika game tidak terdaftar, otomatis alihkan ke Universal.lua
 if not targetRawURL then
     targetRawURL = UNIVERSAL_URL
-    isUniversal = true
-end
-
--- 3. Tambahkan Parameter Anti-Cache
-local scriptURL = targetRawURL .. "?v=" .. tick()
-
--- 4. Pesan Status Log & Notifikasi
-print(string.format("[%s v%s] PlaceId: %d | UniverseId: %d", HUB_NAME, VERSION, placeId, universeId))
-
-if isUniversal then
-    notify(HUB_NAME, "Game belum terdaftar. Memuat Script Universal...", 4)
-    print(string.format("[%s] Game tidak terdaftar di database. Loading Universal Script...", HUB_NAME))
+    isUniversal  = true
+    print(string.format("[%s Loader Debug] ID tidak terdaftar -> Menggunakan UNIVERSAL_URL", HUB_NAME))
 else
-    notify(HUB_NAME, "Game terdeteksi! Memuat Script Khusus...", 4)
-    print(string.format("[%s] Game Supported! Loading Script Khusus Game...", HUB_NAME))
+    print(string.format("[%s Loader Debug] ID terdaftar -> Menggunakan SCRIPT KHUSUS GAME", HUB_NAME))
 end
 
--- 5. Fetch & Eksekusi Script
-local success, errorMessage = pcall(function()
-    local rawCode = game:HttpGet(scriptURL)
-    local loadedFunc, parseErr = loadstring(rawCode)
-    
-    if not loadedFunc then
-        error("Syntax Error: " .. tostring(parseErr))
-    end
-    
-    loadedFunc()
+-- Pasang Parameter Anti-Cache
+local finalURL = targetRawURL .. "?v=" .. tick()
+print(string.format("[%s Loader Debug] Final Fetch URL: %s", HUB_NAME, finalURL))
+
+-- Notifikasi Layar
+notify(HUB_NAME, isUniversal and "Memuat Script Universal..." or "Memuat Script Khusus...", 3)
+
+-- Fetching Script
+local fetchSuccess, rawCode = pcall(function()
+    return game:HttpGet(finalURL)
 end)
 
--- 6. Status Evaluasi Akhir
-if success then
-    print(string.format("[%s] Script berhasil dimuat!", HUB_NAME))
-    notify(HUB_NAME, isUniversal and "Universal Script Dimuat!" or "Script Game Dimuat!", 4)
-else
-    warn(string.format("[%s] Gagal memuat script: %s", HUB_NAME, tostring(errorMessage)))
-    notify(HUB_NAME .. " Error", "Gagal load script! Cek Console (F12).", 6)
+if not fetchSuccess then
+    warn(string.format("[%s Loader Error] Gagal mengunduh file dari GitHub! Cek link URL.", HUB_NAME))
+    notify(HUB_NAME .. " Error", "Gagal mengunduh dari GitHub! Cek F12.", 5)
+    return
 end
+
+-- Compile Script
+local loadedFunc, parseErr = loadstring(rawCode)
+
+if not loadedFunc then
+    warn(string.format("[%s Loader Error] Syntax Error di file GitHub: %s", HUB_NAME, tostring(parseErr)))
+    notify(HUB_NAME .. " Error", "Syntax error di file script! Cek F12.", 5)
+    return
+end
+
+-- Eksekusi Script
+local execSuccess, execErr = pcall(loadedFunc)
+
+if execSuccess then
+    print(string.format("[%s Loader Success] Script (%s) Berhasil Dijalankan!", HUB_NAME, isUniversal and "Universal" or "Game Specific"))
+    notify(HUB_NAME, "Berhasil Dimuat!", 4)
+else
+    warn(string.format("[%s Loader Error] Runtime Error saat menjalankan script: %s", HUB_NAME, tostring(execErr)))
+    notify(HUB_NAME .. " Error", "Runtime Error! Cek Console F12.", 5)
+end
+print("--------------------------------------------------")
